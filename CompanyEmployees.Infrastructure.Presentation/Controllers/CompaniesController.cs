@@ -7,7 +7,7 @@ namespace CompanyEmployees.Infrastructure.Presentation.Controllers;
 
 [Route("api/companies")]
 [ApiController]
-public class CompaniesController : ControllerBase
+public class CompaniesController : ApiControllerBase
 {
     private readonly IServiceManager _service;
 
@@ -24,9 +24,12 @@ public class CompaniesController : ControllerBase
     [HttpGet("{id:guid}", Name = "CompanyById")]
     public async Task<IActionResult> GetCompany(Guid id, CancellationToken ct)
     {
-        var company = await _service.CompanyService.GetCompanyAsync(id, trackChanges: false, ct);
+        var result = await _service.CompanyService.GetCompanyAsync(id, trackChanges: false, ct);
 
-        return Ok(company);
+        return result.Match(
+            company => Ok(company),
+            error => ProcessError(error)
+        );
     }
 
     [HttpPost]
@@ -43,8 +46,11 @@ public class CompaniesController : ControllerBase
     [ServiceFilter(typeof(ValidationFilterAttribute))]
     public async Task<IActionResult> UpdateCompany(Guid id, [FromBody] CompanyForUpdateDto company, CancellationToken ct)
     {
-        await _service.CompanyService.UpdateCompanyAsync(id, company, trackChanges: true, ct);
+        var result = await _service.CompanyService.UpdateCompanyAsync(id, company, trackChanges: true, ct);
 
-        return NoContent();
+        return result.Match(
+            success => NoContent(),
+            error => ProcessError(error)
+        );
     }
 }
