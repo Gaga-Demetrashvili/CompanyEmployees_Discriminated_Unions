@@ -1,16 +1,13 @@
 ﻿using CompanyEmployees.Core.Services.Abstractions;
-using CompanyEmployees.Infrastructure.Presentation.ActionFilters;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 using Shared.DataTransferObjects;
-using Shared.RequestFeatures;
-using System.Text.Json;
 
 namespace CompanyEmployees.Infrastructure.Presentation.Controllers;
 
 [Route("api/companies/{companyId}/employees")]
 [ApiController]
-public class EmployeesController : ControllerBase
+public class EmployeesController : ApiControllerBase
 {
     private readonly IServiceManager _service;
 
@@ -26,15 +23,23 @@ public class EmployeesController : ControllerBase
         var result = await _service.EmployeeService.GetEmployeeForPatchAsync(companyId, id,
             compTrackChanges: false, empTrackChanges: true, ct);
 
-        patchDoc.ApplyTo(result.employeeToPatch, ModelState);
+        return await result.Match(
+            async empTuple =>
+            {
+                patchDoc.ApplyTo(empTuple.employeeToPatch, ModelState);
 
-        TryValidateModel(result.employeeToPatch);
+                TryValidateModel(empTuple.employeeToPatch);
 
-        if (!ModelState.IsValid)
-            return UnprocessableEntity(ModelState);
+                if (!ModelState.IsValid)
+                    return UnprocessableEntity(ModelState);
 
-        await _service.EmployeeService.SaveChangesForPatchAsync(result.employeeToPatch, result.employeeEntity, ct);
+                await _service.EmployeeService.SaveChangesForPatchAsync(empTuple.employeeToPatch,
+               empTuple.employeeEntity!, ct);
 
-        return NoContent();
+                return NoContent();
+            },
+            async compNotFound => await Task.FromResult(ProcessError(compNotFound)),
+            async empNotFound => await Task.FromResult(ProcessError(empNotFound))
+         );
     }
 }
