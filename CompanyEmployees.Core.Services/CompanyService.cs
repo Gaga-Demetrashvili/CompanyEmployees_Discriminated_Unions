@@ -1,9 +1,12 @@
 ﻿using AutoMapper;
 using CompanyEmployees.Core.Domain.Entities;
-using CompanyEmployees.Core.Domain.Exceptions;
+using CompanyEmployees.Core.Services.Extensions;
 using CompanyEmployees.Core.Domain.Repositories;
+using CompanyEmployees.Core.Domain.Responses;
 using CompanyEmployees.Core.Services.Abstractions;
 using LoggingService;
+using OneOf;
+using OneOf.Types;
 using Shared.DataTransferObjects;
 
 namespace CompanyEmployees.Core.Services;
@@ -30,10 +33,12 @@ internal sealed class CompanyService : ICompanyService
         return companiesDto;
     }
 
-    public async Task<CompanyDto> GetCompanyAsync(Guid id, bool trackChanges, 
+    public async Task<OneOf<CompanyDto, CompanyNotFoundResponse>> GetCompanyAsync(Guid id, bool trackChanges, 
         CancellationToken ct = default)
     {
-        var company = await GetCompanyAndCheckIfItExists(id, trackChanges, ct);
+        var (company, error) = await GetCompanyAndCheckIfItExists(id, trackChanges, ct);
+        if (error is not null)
+            return error;
 
         var companyDto = _mapper.Map<CompanyDto>(company);
 
@@ -52,21 +57,25 @@ internal sealed class CompanyService : ICompanyService
         return companyToReturn;
     }
 
-    public async Task UpdateCompanyAsync(Guid companyId, CompanyForUpdateDto companyForUpdate, 
+    public async Task<OneOf<Success, CompanyNotFoundResponse>> UpdateCompanyAsync(Guid companyId, CompanyForUpdateDto companyForUpdate, 
         bool trackChanges, CancellationToken ct = default)
     {
-        var company = await GetCompanyAndCheckIfItExists(companyId, trackChanges, ct);
+        var result = await GetCompanyAndCheckIfItExists(companyId, trackChanges, ct);
+        if (result.TryPickT1(out var error, out var company))
+            return error;
 
         _mapper.Map(companyForUpdate, company);
         await _repository.SaveAsync(ct);
+
+        return new Success();
     }
 
-    private async Task<Company> GetCompanyAndCheckIfItExists(Guid id, bool trackChanges, 
+    private async Task<OneOf<Company, CompanyNotFoundResponse>> GetCompanyAndCheckIfItExists(Guid id, bool trackChanges, 
         CancellationToken ct)
     {
         var company = await _repository.Company.GetCompanyAsync(id, trackChanges, ct);
         if (company is null)
-            throw new CompanyNotFoundException(id);
+            return new CompanyNotFoundResponse(id);
 
         return company;
     }
